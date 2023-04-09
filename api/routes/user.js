@@ -2,17 +2,16 @@ const express = require("express");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const transporter = require("../../transporter");
 
 require("dotenv").config();
 
 const User = require("../models/user");
 
-const checkAuth = require("../middleware/checkAuth");
-
 const router = express.Router();
 
 //User signup
-router.post("/signup", async (req, res, next) => {
+router.post("/signup", async (req, res) => {
   const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
@@ -53,6 +52,15 @@ router.post("/signup", async (req, res, next) => {
                   expiresIn: "30d",
                 }
               );
+              const mail = {
+                to: user.email,
+                from: process.env.GMAIL_ID,
+                subject: `Stockopie : Registration Successful`,
+                text: `Hi ${user.name}, \n You have successfully registered yourself on Stockopie. Have a nice day. \n\n\n Regards, \nStockopie`,
+              };
+              transporter.sendMail(mail, async (error, info) => {
+                if (error) return console.error(error);
+              });
               res.status(201).json({
                 message: "User created",
                 user: {
@@ -95,7 +103,7 @@ router.post("/login", async (req, res, next) => {
     });
   }
 
-  await User.find({ email })
+  await User.findOne({ email })
     .then(async (user) => {
       if (user.length < 1) {
         return res.status(401).json({
@@ -103,14 +111,14 @@ router.post("/login", async (req, res, next) => {
         });
       }
       await bcrypt
-        .compare(password, user[0].password)
+        .compare(password, user.password)
         .then((result) => {
           if (result) {
             const token = jwt.sign(
               {
-                userId: user[0]._id,
-                email: user[0].email,
-                name: user[0].name,
+                userId: user._id,
+                email: user.email,
+                name: user.name,
               },
               process.env.JWT_SECRET,
               {
@@ -119,9 +127,10 @@ router.post("/login", async (req, res, next) => {
             );
             return res.status(200).json({
               userDetails: {
-                _id: user[0]._id,
-                name: user[0].name,
-                email: user[0].email,
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                tracking: user.tracking,
               },
               token,
             });

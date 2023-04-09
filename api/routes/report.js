@@ -59,9 +59,10 @@ router.post("/", async (req, res) => {
       naturalLanguageUnderstanding
         .analyze(analyzeParams)
         .then((analysisResults) => {
-          res
-            .status(200)
-            .json({ analysisResults: analysisResults.result.sentiment });
+          res.status(200).json({
+            analysisResults: analysisResults.result.sentiment,
+            text: data.text,
+          });
         })
         .catch((err) => {
           res.status(500).json({
