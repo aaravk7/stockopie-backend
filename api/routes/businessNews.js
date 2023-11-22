@@ -103,7 +103,6 @@ router.get("/all", (req, res, next) => {
 //Get news by keyword -- related news
 router.get("/", async (req, res) => {
   const { keyword } = req.query;
-  console.log(keyword);
   newsapi.v2
     .topHeadlines({
       q: keyword,

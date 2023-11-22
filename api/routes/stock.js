@@ -1,24 +1,14 @@
 const express = require("express");
 const request = require("request");
-const cheerio = require("cheerio");
-const NaturalLanguageUnderstandingV1 = require("ibm-watson/natural-language-understanding/v1");
-const { IamAuthenticator } = require("ibm-watson/auth");
 
 require("dotenv").config();
 
 const companies = require("../../assets/companies.json");
 const User = require("../models/user");
 const checkAuth = require("../middleware/checkAuth");
+const transporter = require("../../transporter");
 
 const router = express.Router();
-
-const naturalLanguageUnderstanding = new NaturalLanguageUnderstandingV1({
-  version: "2020-08-01",
-  authenticator: new IamAuthenticator({
-    apikey: process.env.NATURAL_LANGUAGE_UNDERSTANDING_APIKEY,
-  }),
-  serviceUrl: process.env.NATURAL_LANGUAGE_UNDERSTANDING_URL,
-});
 
 //Get all companies on NSE and BSE
 router.get("/allCompanies", async (req, res) => {
@@ -26,7 +16,7 @@ router.get("/allCompanies", async (req, res) => {
 });
 
 //Track a stock
-router.post("/track", checkAuth, async (req, res, next) => {
+router.post("/track", checkAuth, async (req, res) => {
   const { userId } = req.user;
   const { companyName, symbol } = req.body;
 
@@ -36,25 +26,65 @@ router.post("/track", checkAuth, async (req, res, next) => {
     });
   }
 
-  await User.updateOne(
-    { _id: userId },
-    { $push: { tracking: { companyName, symbol } } }
-  )
-    .then(() => {
-      res.status(200).json({
-        message: "Tracker successfully added",
+  const user = await User.findOne({ _id: userId });
+
+  let mail = {};
+
+  if (user.tracking.find((stock) => stock.symbol === symbol)) {
+    mail = {
+      to: user.email,
+      from: process.env.GMAIL_ID,
+      subject: `Tracking stopped For Stock : ${companyName}`,
+      text: `Hi ${user.name}, \n Tracking has been stopped successfully for ${companyName}.\n\n Regards, \nStockopie`,
+    };
+
+    await User.updateOne(
+      { _id: userId },
+      { $pull: { tracking: { companyName, symbol } } }
+    )
+      .then(() => {
+        res.status(200).json({
+          message: "Tracker successfully removed",
+        });
+      })
+      .catch((err) => {
+        res.status(500).json({
+          message: "Something went wrong",
+          error: err.toString(),
+        });
       });
-    })
-    .catch((err) => {
-      res.status(500).json({
-        message: "Something went wrong",
-        error: err.toString(),
+  } else {
+    mail = {
+      to: user.email,
+      from: process.env.GMAIL_ID,
+      subject: `Tracking Started For Stock : ${companyName}`,
+      text: `Hi ${user.name}, \n Tracking has been started successfully for ${companyName}.\n\n Regards, \nStockopie`,
+    };
+
+    await User.updateOne(
+      { _id: userId },
+      { $push: { tracking: { companyName, symbol } } }
+    )
+      .then(() => {
+        res.status(200).json({
+          message: "Tracker successfully added",
+        });
+      })
+      .catch((err) => {
+        res.status(500).json({
+          message: "Something went wrong",
+          error: err.toString(),
+        });
       });
-    });
+  }
+
+  transporter.sendMail(mail, async (error, info) => {
+    if (error) return console.error(error);
+  });
 });
 
 //Get all stocks a user is tracking
-router.get("/user/tracking", checkAuth, async (req, res, next) => {
+router.get("/user/tracking", checkAuth, async (req, res) => {
   const { userId } = req.user;
 
   await User.findById(userId)

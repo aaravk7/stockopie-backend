@@ -1,10 +1,10 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
+const transporter = require("./transporter");
 const helmet = require("helmet");
 const cors = require("cors");
 const schedule = require("node-schedule");
-const sgMail = require("@sendgrid/mail");
 const NaturalLanguageUnderstandingV1 = require("ibm-watson/natural-language-understanding/v1");
 const { IamAuthenticator } = require("ibm-watson/auth");
 
@@ -15,8 +15,6 @@ const companies = require("./assets/companies.json");
 const EmailTemplates = require("./assets/emails");
 
 const app = express();
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 //Require Atlas database URI from environment variables
 const DBURI = process.env.DBURI;
@@ -91,10 +89,8 @@ const naturalLanguageUnderstanding = new NaturalLanguageUnderstandingV1({
   serviceUrl: process.env.NATURAL_LANGUAGE_UNDERSTANDING_URL,
 });
 
-// Schedule a job that runs every hour for sending tracking mails
-var j = schedule.scheduleJob("0 0 * * * *", async function (fireDate) {
-  console.log("This job will run every hour");
-
+// Schedule a job that runs every 5 min for sending tracking mails
+var j = schedule.scheduleJob("*/5 * * * *", async function () {
   let entitiesArr = [];
   let companyArr = [];
 
@@ -132,7 +128,6 @@ var j = schedule.scheduleJob("0 0 * * * *", async function (fireDate) {
           }
         }
       }
-      // console.log(companyArr);
     })
     .catch((err) => {
       console.log(err.toString());
@@ -154,12 +149,9 @@ var j = schedule.scheduleJob("0 0 * * * *", async function (fireDate) {
                 status = "fall";
               }
 
-              const msg = {
+              const mail = {
                 to: users[i].email,
-                from: {
-                  email: process.env.SENDGRID_EMAIL,
-                  name: "Stockopie",
-                },
+                from: process.env.GMAIL_ID,
                 subject: `Stock update: ${companyArr[k].companyName}`,
                 text: ` `,
                 html: EmailTemplates.tracker(
@@ -168,18 +160,12 @@ var j = schedule.scheduleJob("0 0 * * * *", async function (fireDate) {
                   status
                 ),
               };
-              // console.log(users[i].name, companyArr[k].companyName, status);
 
-              await sgMail
-                .send(msg)
-                .then(async () => {
-                  // console.log("mail sent");
-                  users[i].tracking[j].mailSent = true;
-                  await users[i].save();
-                })
-                .catch((err) => {
-                  console.log(err.toString());
-                });
+              transporter.sendMail(mail, async (error, info) => {
+                if (error) return console.error(error);
+                users[i].tracking[j].mailSent = true;
+                await users[i].save();
+              });
             }
           }
         }
@@ -191,21 +177,21 @@ var j = schedule.scheduleJob("0 0 * * * *", async function (fireDate) {
 });
 
 // Schedule a job that runs at 6:30 AM everyday
-var k = schedule.scheduleJob("0 30 6 * * *", async function (fireDate) {
-  console.log("test");
-  await User.find()
-    .then(async (users) => {
-      for (i in users) {
-        for (j in users[i].tracking) {
-          users[i].tracking[j].mailSent = false;
-          await users[i].save();
-        }
-      }
-    })
-    .catch((err) => {
-      console.log(err.toString());
-    });
-});
+// var k = schedule.scheduleJob("0 30 6 * * *", async function () {
+//   console.log("test");
+//   await User.find()
+//     .then(async (users) => {
+//       for (i in users) {
+//         for (j in users[i].tracking) {
+//           users[i].tracking[j].mailSent = false;
+//           await users[i].save();
+//         }
+//       }
+//     })
+//     .catch((err) => {
+//       console.log(err.toString());
+//     });
+// });
 
 const PORT = process.env.PORT || 5000;
 

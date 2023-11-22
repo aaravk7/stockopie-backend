@@ -64,7 +64,6 @@ router.post("/", async (req, res) => {
           }
         }
       }
-
       //Define result object
       let result = {
         entities: entitiesArr,
